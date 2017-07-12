@@ -60,8 +60,8 @@ function escapeText(text: string): string {
 function extractElementAttributes(
   attrs: { [key: string]: string },
   attrsToProps: { [key: string]: string | null },
-): { [key: string]: string } | null {
-  const result: { [key: string]: string } = {};
+): { [key: string]: string | boolean } | null {
+  const result: { [key: string]: string | boolean } = {};
   let items = 0;
   for (const key of Object.keys(attrs)) {
     if (key.startsWith("on")) {
@@ -72,7 +72,7 @@ function extractElementAttributes(
       if (v === undefined) {
         v = attrs[key];
       }
-      result[key] = v;
+      result[key] = v === "" ? true : v;
       items++;
     }
   }
@@ -101,10 +101,15 @@ function extractElementStyles(styles: string): { [key: string]: string } | null 
   return null;
 }
 
-function attrsToString(attrs: { [key: string]: string }): string {
+function attrsToString(attrs: { [key: string]: string | boolean }): string {
   let result = "";
   for (const key of Object.keys(attrs)) {
-    result += `"${key}":"${attrs[key]}",`;
+    const v = attrs[key];
+    if (v === true) {
+      result += `"${key}":true,`;
+    } else {
+      result += `"${key}":"${v}",`;
+    }
   }
   return result;
 }
