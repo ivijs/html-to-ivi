@@ -1,6 +1,47 @@
 import * as parser from "posthtml-parser";
 import * as prettier from "prettier";
 
+const AttributesToProps = {
+  class: null,
+  style: null,
+  autofocus: null,
+  "accept-charset": "acceptCharset",
+  "for": "htmlFor",
+};
+
+const InputAttributesToProps = {
+  ...AttributesToProps,
+  type: null,
+  checked: null,
+  value: null,
+};
+
+const InputTypes: { [key: string]: string } = {
+  button: "Button",
+  checkbox: "Checkbox",
+  color: "Color",
+  date: "Date",
+  datetime: "Datetime",
+  "datetime-local": "DatetimeLocal",
+  email: "Email",
+  file: "File",
+  hidden: "Hidden",
+  image: "Image",
+  month: "Month",
+  number: "Number",
+  password: "Password",
+  radio: "Radio",
+  range: "Range",
+  reset: "Reset",
+  search: "Search",
+  submit: "Submit",
+  tel: "Tel",
+  text: "Text",
+  time: "Time",
+  url: "Url",
+  week: "Week",
+};
+
 export interface HtmlToIviOptions {
   componentName: string;
   trim: boolean;
@@ -12,26 +53,27 @@ interface HTMLNode {
   content: Array<HTMLNode | string>;
 }
 
-function extractElementAttributes(attrs: { [key: string]: string }): { [key: string]: string } | null {
+function escapeText(text: string): string {
+  return text.replace(/\n/g, "\\n");
+}
+
+function extractElementAttributes(
+  attrs: { [key: string]: string },
+  attrsToProps: { [key: string]: string | null },
+): { [key: string]: string } | null {
   const result: { [key: string]: string } = {};
   let items = 0;
   for (const key of Object.keys(attrs)) {
     if (key.startsWith("on")) {
       continue;
     }
-    switch (key) {
-      case "class":
-      case "style":
-        break;
-      case "accept-charset":
-        result["acceptCharset"] = attrs[key];
-        break;
-      case "for":
-        result["htmlFor"] = attrs[key];
-        break;
-      default:
-        result[key] = attrs[key];
-        items++;
+    let v = attrsToProps[key];
+    if (v !== null) {
+      if (v === undefined) {
+        v = attrs[key];
+      }
+      result[key] = v;
+      items++;
     }
   }
 
@@ -80,13 +122,13 @@ function isWhitespace(s: string): boolean {
   return isWhitespaceRE.test(s);
 }
 
-function extractChildren(nodes: Array<HTMLNode | string>, options: HtmlToIviOptions): string {
+function extractChildren(content: Array<HTMLNode | string>, options: HtmlToIviOptions): string {
   let result = "";
-  for (const n of nodes) {
+  for (const n of content) {
     if (typeof n === "string") {
       if (n) {
         if (!options.trim || !isWhitespace(n)) {
-          result += `"${n.replace(/\n/g, "\\n")}",`;
+          result += `"${escapeText(n)}",`;
         }
       }
     } else {
@@ -97,30 +139,72 @@ function extractChildren(nodes: Array<HTMLNode | string>, options: HtmlToIviOpti
 }
 
 function printNode(node: HTMLNode, options: HtmlToIviOptions): string {
-  let result = `h.${node.tag}`;
-  if (node.attrs) {
-    if (node.attrs.class) {
-      result += `("${node.attrs.class}")`;
+  let result = "";
+  const tag = node.tag;
+  const attrs = node.attrs;
+  const content = node.content;
+
+  if (tag === "input") {
+    let inputType = "text";
+    if (attrs) {
+      if (attrs.type) {
+        const t = InputTypes[attrs.type];
+        if (t !== undefined) {
+          inputType = t;
+        }
+      }
+    }
+    result += `h.input${inputType}`;
+  } else {
+    result += `h.${tag}`;
+  }
+
+  if (attrs) {
+    if (attrs.class) {
+      result += `("${attrs.class}")`;
     } else {
       result += `()`;
     }
-    if (node.attrs.style) {
-      const styles = extractElementStyles(node.attrs.style);
+
+    if (attrs.style) {
+      const styles = extractElementStyles(attrs.style);
       if (styles !== null) {
         result += `.style({${stylesToString(styles)}})`;
       }
     }
-    const attrs = extractElementAttributes(node.attrs);
-    if (attrs !== null) {
-      result += `.props({${attrsToString(attrs)}})`;
+
+    let props;
+    if (tag === "input") {
+      if (attrs.value) {
+        result += `.value("${escapeText(attrs.value)}")`;
+      }
+      if (attrs.checked) {
+        result += `.checked(true)`;
+      }
+      props = extractElementAttributes(attrs, InputAttributesToProps);
+    } else {
+      props = extractElementAttributes(attrs, AttributesToProps);
+    }
+    if (props !== null) {
+      result += `.props({${attrsToString(props)}})`;
     }
   } else {
     result += `()`;
   }
-  if (node.content) {
-    const children = extractChildren(node.content, options);
-    if (children) {
-      result += `.children(${children})`;
+
+  if (content) {
+    if (tag === "textarea") {
+      if (content.length > 0) {
+        const value = content[0];
+        if (typeof value === "string" && value) {
+          result += `.value("${escapeText(value.trim())}")`;
+        }
+      }
+    } else {
+      const children = extractChildren(content, options);
+      if (children) {
+        result += `.children(${children})`;
+      }
     }
   }
 
