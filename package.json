@@ -1,0 +1,58 @@
+{
+  "name": "html-to-ivi",
+  "version": "0.0.1",
+  "description": "Converts HTML to ivi Virtual DOM.",
+  "main": "dist/index.js",
+  "bin": {
+    "html-to-ivi": "dist/cli.js"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Boris Kaul",
+    "email": "localvoid@gmail.com",
+    "url": "https://github.com/localvoid"
+  },
+  "keywords": [
+    "ivi",
+    "virtual",
+    "dom",
+    "virtualdom",
+    "vdom"
+  ],
+  "homepage": "https://github.com/ivijs/html-to-ivi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ivijs/html-to-ivi"
+  },
+  "bugs": {
+    "url": "https://github.com/ivijs/html-to-ivi/issues"
+  },
+  "github": "https://github.com/ivijs/html-to-ivi",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "watch": "tsc --watch",
+    "dist": "tsc"
+  },
+  "dependencies": {
+    "tslib": "^1.7.1",
+    "minimist": "^1.2.0",
+    "posthtml-parser": "^0.2.1",
+    "prettier": "^1.5.2"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.0.1",
+    "@types/minimist": "^1.2.0",
+    "@types/mocha": "^2.2.41",
+    "@types/node": "^8.0.10",
+    "chai": "^4.1.0",
+    "ivi-tslint-rules": "^0.1.1",
+    "mocha": "^3.4.2",
+    "prettier": "^1.5.2",
+    "tslint": "^5.5.0",
+    "typescript": "^2.4.1"
+  }
+}
