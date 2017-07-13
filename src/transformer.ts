@@ -1,7 +1,18 @@
 import * as parser from "posthtml-parser";
 import * as prettier from "prettier";
+import { escapeText } from "./escape";
 
-const AttributesToProps = {
+const enum Flags {
+  Input = 1,
+  TextArea = 1 << 1,
+}
+
+const ElementFlags: { [key: string]: Flags } = {
+  input: Flags.Input,
+  textarea: Flags.TextArea,
+};
+
+const AttributesToProps: { [key: string]: string | null } = {
   class: null,
   style: null,
   autofocus: null,
@@ -9,7 +20,7 @@ const AttributesToProps = {
   "for": "htmlFor",
 };
 
-const InputAttributesToProps = {
+const InputAttributesToProps: { [key: string]: string | null } = {
   ...AttributesToProps,
   type: null,
   checked: null,
@@ -53,52 +64,112 @@ interface HTMLNode {
   content: Array<HTMLNode | string>;
 }
 
-function escapeText(text: string): string {
-  return text.replace(/\n/g, "\\n");
+function extractFlags(node: HTMLNode): Flags {
+  const flags = ElementFlags[node.tag];
+  if (flags === undefined) {
+    return 0;
+  }
+  return flags;
 }
 
-function extractElementAttributes(
-  attrs: { [key: string]: string },
-  attrsToProps: { [key: string]: string | null },
+function extractAttributes(
+  flags: Flags,
+  node: HTMLNode,
 ): { [key: string]: string | boolean } | null {
-  const result: { [key: string]: string | boolean } = {};
-  let items = 0;
-  for (const key of Object.keys(attrs)) {
-    if (key.startsWith("on")) {
-      continue;
+  const attrs = node.attrs;
+  if (attrs) {
+    let attrsToProps = AttributesToProps;
+    if ((flags & Flags.Input) !== 0) {
+      attrsToProps = InputAttributesToProps;
     }
-    let v = attrsToProps[key];
-    if (v !== null) {
-      if (v === undefined) {
-        v = attrs[key];
-      }
-      result[key] = v === "" ? true : v;
-      items++;
-    }
-  }
 
-  if (items > 0) {
-    return result;
+    const result: { [key: string]: string | boolean } = {};
+    let items = 0;
+    for (const key of Object.keys(attrs)) {
+      // Ignore events.
+      if (key.startsWith("on")) {
+        continue;
+      }
+
+      let v = attrsToProps[key];
+      if (v !== null) {
+        if (v === undefined) {
+          v = attrs[key];
+        }
+        result[key] = v === "" ? true : v;
+        items++;
+      }
+    }
+
+    if (items > 0) {
+      return result;
+    }
   }
   return null;
 }
 
-function extractElementStyles(styles: string): { [key: string]: string } | null {
-  const result: { [key: string]: string } = {};
-  let items = 0;
+function extractStyle(node: HTMLNode): { [key: string]: string } | null {
+  if (node.attrs && node.attrs.style) {
+    const style = node.attrs.style;
+    const result: { [key: string]: string } = {};
+    let items = 0;
 
-  for (const kv of styles.split(";")) {
-    const [key, value] = kv.split(":");
-    if (value !== undefined) {
-      result[key.trim()] = value.trim();
-      items++;
+    for (const kv of style.split(";")) {
+      const [key, value] = kv.split(":");
+      if (value !== undefined) {
+        result[key.trim()] = value.trim();
+        items++;
+      }
+    }
+
+    if (items > 0) {
+      return result;
+    }
+  }
+  return null;
+}
+
+function extractClassName(node: HTMLNode): string {
+  const attrs = node.attrs;
+
+  if (attrs && attrs.class) {
+    return attrs.class;
+  }
+
+  return "";
+}
+
+function extractInputType(node: HTMLNode): string {
+  const attrs = node.attrs;
+
+  if (attrs && attrs.type) {
+    const t = InputTypes[attrs.type];
+    if (t !== undefined) {
+      return t;
     }
   }
 
-  if (items > 0) {
-    return result;
+  return "Text";
+}
+
+const DefaultInputValues = { value: "", checked: false };
+
+function extractInputValues(node: HTMLNode): { value: string, checked: boolean } {
+  const attrs = node.attrs;
+
+  if (attrs) {
+    let value = "";
+    let checked = false;
+    if (attrs.value) {
+      value = attrs.value;
+    }
+    if (attrs.checked) {
+      checked = true;
+    }
+    return { value, checked };
   }
-  return null;
+
+  return DefaultInputValues;
 }
 
 function attrsToString(attrs: { [key: string]: string | boolean }): string {
@@ -146,59 +217,39 @@ function extractChildren(content: Array<HTMLNode | string>, options: HtmlToIviOp
 function printNode(node: HTMLNode, options: HtmlToIviOptions): string {
   let result = "";
   const tag = node.tag;
-  const attrs = node.attrs;
+  const flags = extractFlags(node);
+  const className = extractClassName(node);
+  const attrs = extractAttributes(flags, node);
+  const style = extractStyle(node);
   const content = node.content;
 
-  if (tag === "input") {
-    let inputType = "text";
-    if (attrs) {
-      if (attrs.type) {
-        const t = InputTypes[attrs.type];
-        if (t !== undefined) {
-          inputType = t;
-        }
-      }
-    }
-    result += `h.input${inputType}`;
-  } else {
+  if ((flags & Flags.Input) === 0) {
     result += `h.${tag}`;
+  } else {
+    result += `h.input${extractInputType(node)}`;
   }
 
-  if (attrs) {
-    if (attrs.class) {
-      result += `("${attrs.class}")`;
-    } else {
-      result += `()`;
-    }
+  result += className ? `("${className}")` : `()`;
 
-    if (attrs.style) {
-      const styles = extractElementStyles(attrs.style);
-      if (styles !== null) {
-        result += `.style({${stylesToString(styles)}})`;
-      }
-    }
+  if (style) {
+    result += `.style({${stylesToString(style)}})`;
+  }
 
-    let props;
-    if (tag === "input") {
-      if (attrs.value) {
-        result += `.value("${escapeText(attrs.value)}")`;
-      }
-      if (attrs.checked) {
-        result += `.checked(true)`;
-      }
-      props = extractElementAttributes(attrs, InputAttributesToProps);
-    } else {
-      props = extractElementAttributes(attrs, AttributesToProps);
+  if ((flags & Flags.Input) !== 0) {
+    const inputValues = extractInputValues(node);
+    if (inputValues.value) {
+      result += `.value("${escapeText(inputValues.value)}")`;
     }
-    if (props !== null) {
-      result += `.props({${attrsToString(props)}})`;
+    if (inputValues.checked) {
+      result += `.checked(true)`;
     }
-  } else {
-    result += `()`;
+    if (attrs) {
+      result += `.props({${attrsToString(attrs)}})`;
+    }
   }
 
   if (content) {
-    if (tag === "textarea") {
+    if ((flags & Flags.TextArea) !== 0) {
       if (content.length > 0) {
         const value = content[0];
         if (typeof value === "string" && value) {
