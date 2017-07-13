@@ -216,7 +216,10 @@ function printNode(node: HTMLNode, options: HtmlToIviOptions): string {
   return result;
 }
 
-export function htmlToIvi(html: string, options: HtmlToIviOptions): string {
+export function htmlToIvi(
+  html: string,
+  options: HtmlToIviOptions = { componentName: "Component", trim: true },
+): string {
   const nodes = parser(html);
   if (nodes.length > 0) {
     return prettier.format(`function ${options.componentName}() { return ${printNode(nodes[0], options)}; }`);
